@@ -3,6 +3,7 @@ import cv2
 import pygame
 import numpy as np
 import time
+import imutils
 
 # Speed of the drone
 S = 60
@@ -67,8 +68,11 @@ class FrontEnd(object):
             return
 
         frame_read = self.tello.get_frame_read()
-
+        face_detected = False
         should_stop = False
+        #initialise tracker type
+        tracker = cv2.TrackerKCF_create()
+        
         while not should_stop:
 
             for event in pygame.event.get():
@@ -89,65 +93,83 @@ class FrontEnd(object):
                 break
 
             self.screen.fill([0, 0, 0])
-            frame = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2RGB)
+            originalframe = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2RGB)
 
-            #------------FACIAL RECOGNITION-----------------------
-            self.faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
-            self.gray = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-            self.faces = self.faceCascade.detectMultiScale(
-                self.gray,
-                scaleFactor = 1.1,
-                minNeighbors = 5,
-                minSize = (30,30),
-                flags = cv2.CASCADE_SCALE_IMAGE
-                )
-            #self.faces returns the faces it detects in a nested list [[face1],[face2]]
-            #each list contains[x-axis,y-axis,width,height]
-            #-----------------------------------------------------
+            if face_detected == False:
+                #------------FACIAL RECOGNITION-----------------------
+                self.faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+                self.gray = cv2.cvtColor(originalframe,cv2.COLOR_BGR2GRAY)
+                self.faces = self.faceCascade.detectMultiScale(
+                    self.gray,
+                    scaleFactor = 1.1,
+                    minNeighbors = 5,
+                    minSize = (30,30),
+                    flags = cv2.CASCADE_SCALE_IMAGE
+                    )
+                #self.faces returns the faces it detects in a nested list [[face1],[face2]]
+                #each list contains[x-axis,y-axis,width,height]
+                #-----------------------------------------------------
 
-            
-            frame = np.rot90(frame)
-            frame = np.flipud(frame)
-            frame = pygame.surfarray.make_surface(frame)
-            self.screen.blit(frame, (0, 0))
-
-            #-----------------DRAW BOUNDINGBOX ON FACE------------
-            self.colorofbox = pygame.Color(0,255,0)
-
-            for item in self.faces:
-                pygame.draw.rect(self.screen,self.colorofbox,pygame.Rect(item[0],item[1],item[2],item[3]),2)
-
-            #-----------------------------------------------------
-
-            pygame.display.update()
-
-            #----CONTROL THE DRONE BASED ON THE BOUNDING BOX------
-
-            if len(self.faces)>0:
-
-                self.selectedface = self.faces[0]
                 
-                for item in self.faces:
-                    if (item[2]*item[3])>(self.selectedface[2]*self.selectedface[3]):
-                        self.selectedface = item
-                
-                
-                self.centeredaxis = [self.selectedface[0]+(self.selectedface[2]//2),self.selectedface[1]+(self.selectedface[3]//2)]
+                frame = np.rot90(originalframe)
+                frame = np.flipud(frame)
+                frame = pygame.surfarray.make_surface(frame)
+                self.screen.blit(frame, (0, 0))
 
-                if self.centeredaxis[0] < 480:
-                    print("left")
-                    self.yawleft()
-                    self.update()
-                   
-                elif self.centeredaxis[0] > 480:
-                    print("right")
-                    self.yawright()
-                    self.update()
+                if len(self.faces)>0:
+                    print("face detected")
+                    face_detected = True
+                    #-----------------DRAW BOUNDINGBOX ON FACE------------
+                    self.colorofbox = pygame.Color(0,255,0)
+                    for item in self.faces:
+                        pygame.draw.rect(self.screen,self.colorofbox,pygame.Rect(item[0],item[1],item[2],item[3]),2)
+
+                    #select the closest face to track
+                    self.selectedface = self.faces[0]
+                    for item in self.faces:
+                        if (item[2]*item[3])>(self.selectedface[2]*self.selectedface[3]):
+                            self.selectedface = item
+                    ok = tracker.init(originalframe, (self.selectedface[0],self.selectedface[1],self.selectedface[2],self.selectedface[3]))
+                    #-----------------------------------------------------
+
+                pygame.display.update()
+
             else:
-                self.emergencystop()
-                self.update()
-                  
-            #-----------------------------------------------------
+                print("face tracking")
+                self.colorofbox = pygame.Color(255,0,0)
+
+                #updates the tracker with current frame, ok determines if tracking is successful, bbox is the bounding box
+                ok,bbox = tracker.update(originalframe)
+                
+                #----CONTROL THE DRONE BASED ON THE BOUNDING BOX------
+                if ok:
+
+                    frame = np.rot90(originalframe)
+                    frame = np.flipud(frame)
+                    frame = pygame.surfarray.make_surface(frame)
+                    self.screen.blit(frame, (0, 0))
+                    
+                    pygame.draw.rect(self.screen,self.colorofbox,pygame.Rect(bbox[0],bbox[1],bbox[2],bbox[3]),2)
+                    self.centeredaxis = [bbox[0]+(bbox[2]//2),bbox[1]+(bbox[3]//2)]
+
+                    
+                    pygame.display.update()
+
+                    if self.centeredaxis[0] < 480:
+                        print("left")
+                        self.yawleft()
+                        self.update()
+                       
+                    elif self.centeredaxis[0] > 480:
+                        print("right")
+                        self.yawright()
+                        self.update()
+                else:
+                    print("face lost")
+                    face_detected = False
+                
+                      
+                #-----------------------------------------------------
             
 
             time.sleep(1 / FPS)
