@@ -8,7 +8,7 @@ import imutils
 # Speed of the drone
 S = 60
 # Frames per second of the pygame window display
-FPS = 25
+FPS = 30
 
 
 class FrontEnd(object):
@@ -72,7 +72,7 @@ class FrontEnd(object):
         should_stop = False
         #initialise tracker type
         tracker = cv2.TrackerKCF_create()
-        
+        framespersecond = 0
         while not should_stop:
 
             for event in pygame.event.get():
@@ -96,16 +96,18 @@ class FrontEnd(object):
             originalframe = cv2.cvtColor(frame_read.frame, cv2.COLOR_BGR2RGB)
 
             if face_detected == False:
+                self.faces = []
                 #------------FACIAL RECOGNITION-----------------------
-                self.faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
-                self.gray = cv2.cvtColor(originalframe,cv2.COLOR_BGR2GRAY)
-                self.faces = self.faceCascade.detectMultiScale(
-                    self.gray,
-                    scaleFactor = 1.1,
-                    minNeighbors = 5,
-                    minSize = (30,30),
-                    flags = cv2.CASCADE_SCALE_IMAGE
-                    )
+                if framespersecond%10 == 0:
+                    self.faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+                    self.gray = cv2.cvtColor(originalframe,cv2.COLOR_BGR2GRAY)
+                    self.faces = self.faceCascade.detectMultiScale(
+                        self.gray,
+                        scaleFactor = 1.1,
+                        minNeighbors = 5,
+                        minSize = (30,30),
+                        flags = cv2.CASCADE_SCALE_IMAGE
+                        )
                 #self.faces returns the faces it detects in a nested list [[face1],[face2]]
                 #each list contains[x-axis,y-axis,width,height]
                 #-----------------------------------------------------
@@ -171,7 +173,10 @@ class FrontEnd(object):
                       
                 #-----------------------------------------------------
             
-
+            if framespersecond == 30:
+                framespersecond = 0
+            else:
+                framespersecond += 1
             time.sleep(1 / FPS)
 
         # Call it always before finishing. To deallocate resources.
